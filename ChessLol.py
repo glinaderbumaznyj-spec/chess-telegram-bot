@@ -1,31 +1,36 @@
+import os
 import logging
 import random
+import asyncio
+import threading
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-import os
-from threading import Thread
-from flask import Flask, request
+from flask import Flask
 
-# Создаем Flask приложение для health check
+# ========== FLASK ПРИЛОЖЕНИЕ ДЛЯ HEALTH CHECKS ==========
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Шахматный бот работает!"
+    return """
+    <html>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h1>♔ Шахматный тренер работает! ♚</h1>
+            <p>Телеграм бот для тренировки игры вслепую</p>
+            <p>Статус: <span style="color: green;">● Активен</span></p>
+        </body>
+    </html>
+    """
 
 @app.route('/health')
 def health():
     return "OK", 200
 
-def run_flask():
-    app.run(host='0.0.0.0', port=5000)
+@app.route('/ping')
+def ping():
+    return "pong", 200
 
-def main():
-    # Запускаем Flask в отдельном потоке
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    
+# ========== ОСНОВНОЙ КОД БОТА ==========
 # Включим логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -521,12 +526,20 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return CHOOSING
 
-# Основная функция
-def main():
-    # Вставьте ваш токен от BotFather
-    TOKEN = "8550708464:AAG0paiyxFFlvvjnePHQjPhIqooqZ1-bS_Q"
+# ========== ФУНКЦИИ ДЛЯ ЗАПУСКА ==========
+def run_flask(port):
+    """Запуск Flask сервера"""
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+async def run_bot():
+    """Запуск Telegram бота"""
+    TOKEN = os.getenv("TOKEN")
     
-    # Создаем приложение
+    if not TOKEN:
+        print("❌ ОШИБКА: Не установлен TOKEN!")
+        print("Добавьте переменную окружения TOKEN в настройках Render")
+        return
+    
     application = Application.builder().token(TOKEN).build()
     
     # Создаем ConversationHandler
@@ -552,8 +565,26 @@ def main():
     application.add_handler(CommandHandler('stats', show_stats))
     
     # Запускаем бота
-    print("Бот запущен...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    print("🤖 Бот запущен!")
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+def main():
+    """Основная функция"""
+    # Получаем порт из переменных окружения (Render дает порт)
+    PORT = int(os.getenv("PORT", 5000))
+    
+    print(f"🚀 Запуск приложения на порту {PORT}")
+    
+    # Запускаем Flask в отдельном потоке
+    flask_thread = threading.Thread(target=run_flask, args=(PORT,))
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    print(f"🌐 Веб-сервер запущен: http://0.0.0.0:{PORT}")
+    print(f"🔗 Health check: http://0.0.0.0:{PORT}/health")
+    
+    # Запускаем бота
+    asyncio.run(run_bot())
 
 if __name__ == '__main__':
     main()
